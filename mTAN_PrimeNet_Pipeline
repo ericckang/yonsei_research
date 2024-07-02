@@ -1,0 +1,77 @@
+import os
+import subprocess
+import torch
+import numpy as np
+
+# Ensure that the mTAN and PrimeNet directories are correctly referenced
+base_dir = 'Yonsei_Research'
+mtan_dir = os.path.join(base_dir, 'mTAN')
+primenet_dir = os.path.join(base_dir, 'PrimeNet')
+data_dir = os.path.join(primenet_dir, 'data')
+
+# Placeholder for loading data function, replace with actual data loading logic
+def load_your_data_function():
+    # Load your irregular time series data here
+    # This should return the data in a format that mTAN expects, e.g., (timestamps, values)
+    return np.random.randn(100, 10), np.random.randn(100)
+
+# Interpolate using mTAN
+def interpolate_with_mtan(X):
+    np.save(os.path.join(mtan_dir, 'temp_X.npy'), X)
+    
+    # Run the mTAN interpolation script/command
+    interpolation_script = os.path.join(mtan_dir, 'interpolation_command.sh')
+    subprocess.run(['sh', interpolation_script], check=True)
+    
+    # Load the interpolated data
+    X_interpolated = np.load(os.path.join(mtan_dir, 'interpolated_X.npy'))
+    return X_interpolated
+
+# Prepare data using mTAN and PrimeNet
+def preprocess_with_mtan_and_primenet():
+    # Step 1: Load your irregular data
+    X, y = load_your_data_function()
+    
+    # Step 2: Interpolate data with mTAN
+    X_interpolated = interpolate_with_mtan(X)
+    
+    # Step 3: Save the interpolated data for PrimeNet
+    torch.save(torch.tensor(X_interpolated), os.path.join(data_dir, 'X_train.pt'))
+    torch.save(torch.tensor(y), os.path.join(data_dir, 'y_train.pt'))
+
+# Run PrimeNet pre-processing
+def run_primenet_preprocessing():
+    # PrimeNet preprocessing commands, adapt as needed
+    preprocess_activity_script = os.path.join(primenet_dir, 'preprocess', 'preprocess_activity.py')
+    preprocess_physionet_script = os.path.join(primenet_dir, 'preprocess', 'preprocess_physionet.py')
+    preprocess_ae_script = os.path.join(primenet_dir, 'preprocess', 'preprocess_ae.py')
+    
+    subprocess.run(['python', preprocess_activity_script], check=True)
+    subprocess.run(['python', preprocess_physionet_script], check=True)
+    subprocess.run(['python', preprocess_ae_script], check=True)
+
+# Run PrimeNet pre-training
+def run_primenet_pretraining():
+    pretrain_script = os.path.join(primenet_dir, 'pretrain.sh')
+    subprocess.run(['sh', pretrain_script], check=True)
+
+# Run PrimeNet fine-tuning
+def run_primenet_finetuning():
+    finetune_script = os.path.join(primenet_dir, 'finetune.sh')
+    subprocess.run(['sh', finetune_script], check=True)
+
+def main():
+    # Step 1: Preprocess data with mTAN and PrimeNet
+    preprocess_with_mtan_and_primenet()
+    
+    # Step 2: Run PrimeNet preprocessing
+    run_primenet_preprocessing()
+    
+    # Step 3: Run PrimeNet pre-training
+    run_primenet_pretraining()
+    
+    # Step 4: Run PrimeNet fine-tuning
+    run_primenet_finetuning()
+
+if __name__ == "__main__":
+    main()
