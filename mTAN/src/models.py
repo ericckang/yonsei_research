@@ -70,7 +70,7 @@ class multiTimeAttention(nn.Module):
     
 class enc_mtan_rnn(nn.Module):
     def __init__(self, input_dim, query, latent_dim=2, nhidden=16, 
-                 embed_time=16, num_heads=1, learn_emb=False, device='cuda'):
+                 embed_time=16, num_heads=1, learn_emb=False, device='cpu'):
         super(enc_mtan_rnn, self).__init__()
         self.embed_time = embed_time
         self.dim = input_dim
@@ -90,7 +90,6 @@ class enc_mtan_rnn(nn.Module):
         
     
     def learn_time_embedding(self, tt):
-        tt = tt.to(self.device)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -107,15 +106,14 @@ class enc_mtan_rnn(nn.Module):
         return pe
        
     def forward(self, x, time_steps):
-        time_steps = time_steps.cpu()
         mask = x[:, :, self.dim:]
         mask = torch.cat((mask, mask), 2)
         if self.learn_emb:
-            key = self.learn_time_embedding(time_steps).to(self.device)
-            query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            key = self.learn_time_embedding(time_steps)
+            query = self.learn_time_embedding(self.query.unsqueeze(0))
         else:
-            key = self.fixed_time_embedding(time_steps).to(self.device)
-            query = self.fixed_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            key = self.fixed_time_embedding(time_steps)
+            query = self.fixed_time_embedding(self.query.unsqueeze(0))
         out = self.att(query, key, x, mask)
         out, _ = self.gru_rnn(out)
         out = self.hiddens_to_z0(out)
@@ -125,7 +123,7 @@ class enc_mtan_rnn(nn.Module):
 class dec_mtan_rnn(nn.Module):
  
     def __init__(self, input_dim, query, latent_dim=2, nhidden=16, 
-                 embed_time=16, num_heads=1, learn_emb=False, device='cuda'):
+                 embed_time=16, num_heads=1, learn_emb=False, device='cpu'):
         super(dec_mtan_rnn, self).__init__()
         self.embed_time = embed_time
         self.dim = input_dim
@@ -145,7 +143,6 @@ class dec_mtan_rnn(nn.Module):
         
         
     def learn_time_embedding(self, tt):
-        tt = tt.to(self.device)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -164,13 +161,12 @@ class dec_mtan_rnn(nn.Module):
        
     def forward(self, z, time_steps):
         out, _ = self.gru_rnn(z)
-        time_steps = time_steps.cpu()
         if self.learn_emb:
-            query = self.learn_time_embedding(time_steps).to(self.device)
-            key = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            query = self.learn_time_embedding(time_steps)
+            key = self.learn_time_embedding(self.query.unsqueeze(0))
         else:
-            query = self.fixed_time_embedding(time_steps).to(self.device)
-            key = self.fixed_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            query = self.fixed_time_embedding(time_steps)
+            key = self.fixed_time_embedding(self.query.unsqueeze(0))
         out = self.att(query, key, out)
         out = self.z0_to_obs(out)
         return out        
@@ -179,7 +175,7 @@ class dec_mtan_rnn(nn.Module):
 class enc_mtan_classif(nn.Module):
  
     def __init__(self, input_dim, query, nhidden=16, 
-                 embed_time=16, num_heads=1, learn_emb=True, freq=10., device='cuda'):
+                 embed_time=16, num_heads=1, learn_emb=True, freq=10., device='cpu'):
         super(enc_mtan_classif, self).__init__()
         assert embed_time % num_heads == 0
         self.freq = freq
@@ -203,7 +199,6 @@ class enc_mtan_classif(nn.Module):
     
     
     def learn_time_embedding(self, tt):
-        tt = tt.to(self.device)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -221,15 +216,14 @@ class enc_mtan_classif(nn.Module):
     
        
     def forward(self, x, time_steps):
-        time_steps = time_steps.cpu()
         mask = x[:, :, self.dim:]
         mask = torch.cat((mask, mask), 2)
         if self.learn_emb:
-            key = self.learn_time_embedding(time_steps).to(self.device)
-            query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            key = self.learn_time_embedding(time_steps)
+            query = self.learn_time_embedding(self.query.unsqueeze(0))
         else:
-            key = self.time_embedding(time_steps, self.embed_time).to(self.device)
-            query = self.time_embedding(self.query.unsqueeze(0), self.embed_time).to(self.device)
+            key = self.time_embedding(time_steps, self.embed_time)
+            query = self.time_embedding(self.query.unsqueeze(0), self.embed_time)
             
         out = self.att(query, key, x, mask)
         out = out.permute(1, 0, 2)
@@ -242,7 +236,7 @@ class enc_mtan_classif(nn.Module):
 class enc_mtan_classif_activity(nn.Module):
  
     def __init__(self, input_dim, nhidden=16, 
-                 embed_time=16, num_heads=1, learn_emb=True, freq=10., device='cuda'):
+                 embed_time=16, num_heads=1, learn_emb=True, freq=10., device='cpu'):
         super(enc_mtan_classif_activity, self).__init__()
         assert embed_time % num_heads == 0
         self.freq = freq
@@ -260,7 +254,6 @@ class enc_mtan_classif_activity(nn.Module):
     
     
     def learn_time_embedding(self, tt):
-        tt = tt.to(self.device)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -278,14 +271,13 @@ class enc_mtan_classif_activity(nn.Module):
     
        
     def forward(self, x, time_steps):
-        batch = x.size(0)
         time_steps = time_steps.cpu()
         mask = x[:, :, self.dim:]
         mask = torch.cat((mask, mask), 2)
         if self.learn_emb:
-            key = self.learn_time_embedding(time_steps).to(self.device)
+            key = self.learn_time_embedding(time_steps)
         else:
-            key = self.time_embedding(time_steps, self.embed_time).to(self.device)
+            key = self.time_embedding(time_steps, self.embed_time)
         out = self.att(key, key, x, mask)
         out, _ = self.gru(out)
         out = self.classifier(out)
@@ -294,7 +286,7 @@ class enc_mtan_classif_activity(nn.Module):
     
     
 class enc_interp(nn.Module):
-    def __init__(self, input_dim, query, latent_dim=2, nhidden=16, device='cuda'):
+    def __init__(self, input_dim, query, latent_dim=2, nhidden=16, device='cpu'):
         super(enc_interp, self).__init__()
         self.dim = input_dim
         self.device = device
@@ -311,23 +303,21 @@ class enc_interp(nn.Module):
     
     def attention(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        query, key = query.to(self.device), key.to(self.device)
+        query, key = query, key
         batch, seq_len, dim = value.size()
         scores = -(query.unsqueeze(-1) - key.unsqueeze(-2))**2
         scores = scores[:, :, :, None].repeat(1, 1, 1, dim)
-        bandwidth = torch.log(1 + torch.exp(self.bandwidth(torch.ones(1, 1, 1, 1).to(self.device))))
+        bandwidth = torch.log(1 + torch.exp(self.bandwidth(torch.ones(1, 1, 1, 1))))
         scores = scores * bandwidth
         if mask is not None:
             scores = scores.masked_fill(mask.unsqueeze(1) == 0, -1e9)
         p_attn = F.softmax(scores, dim = -2)
         if dropout is not None:
             p_attn = dropout(p_attn)
-        #return torch.sum(p_attn*value, -2), p_attn
         return torch.sum(p_attn*value.unsqueeze(1), -2), p_attn
        
         
     def forward(self, x, time_steps):
-        #time_steps = time_steps.cpu()
         mask = x[:, :, self.dim:]
         mask = torch.cat((mask, mask), 2)
         out, _ = self.attention(self.query.unsqueeze(0), time_steps, x, mask)
@@ -339,7 +329,7 @@ class enc_interp(nn.Module):
     
 class dec_interp(nn.Module):
  
-    def __init__(self, input_dim, query, latent_dim=2, nhidden=16, device='cuda'):
+    def __init__(self, input_dim, query, latent_dim=2, nhidden=16, device='cpu'):
         super(dec_interp, self).__init__()
         self.dim = input_dim
         self.device = device
@@ -355,18 +345,17 @@ class dec_interp(nn.Module):
     
     def attention(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        query, key = query.to(self.device), key.to(self.device)
+        query, key = query, key
         batch, seq_len, dim = value.size()
         scores = -(query.unsqueeze(-1) - key.unsqueeze(-2))**2
         scores = scores[:, :, :, None].repeat(1, 1, 1, dim)
-        bandwidth = torch.log(1 + torch.exp(self.bandwidth(torch.ones(1, 1, 1, 1).to(self.device))))
+        bandwidth = torch.log(1 + torch.exp(self.bandwidth(torch.ones(1, 1, 1, 1))))
         scores = scores * bandwidth
         if mask is not None:
             scores = scores.masked_fill(mask.unsqueeze(1) == 0, -1e9)
         p_attn = F.softmax(scores, dim = -2)
         if dropout is not None:
             p_attn = dropout(p_attn)
-        #return torch.sum(p_attn*value, -2), p_attn
         return torch.sum(p_attn*value.unsqueeze(1), -2), p_attn
         
     def forward(self, z, time_steps):
@@ -378,7 +367,7 @@ class dec_interp(nn.Module):
     
 class enc_rnn3(nn.Module):
     def __init__(self, input_dim, query, latent_dim=2, nhidden=16, 
-                 embed_time=16, use_classif=False, learn_emb=False, device='cuda'):
+                 embed_time=16, use_classif=False, learn_emb=False, device='cpu'):
         super(enc_rnn3, self).__init__()
         self.use_classif = use_classif 
         self.embed_time = embed_time
@@ -410,7 +399,6 @@ class enc_rnn3(nn.Module):
                 nn.Linear(50, latent_dim * 2))
     
     def learn_time_embedding(self, tt):
-        tt = tt.to(self.device)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -440,19 +428,17 @@ class enc_rnn3(nn.Module):
         p_attn = F.softmax(scores, dim = -2)
         if dropout is not None:
             p_attn = dropout(p_attn)
-        #return torch.sum(p_attn*value, -2), p_attn
         return torch.sum(p_attn*value.unsqueeze(1), -2), p_attn
        
     def forward(self, x, time_steps):
-        time_steps = time_steps.cpu()
         mask = x[:, :, self.dim:]
         mask = torch.cat((mask, mask), 2)
         if self.learn_emb:
-            key = self.learn_time_embedding(time_steps).to(self.device)
-            query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            key = self.learn_time_embedding(time_steps)
+            query = self.learn_time_embedding(self.query.unsqueeze(0))
         else:
-            key = self.fixed_time_embedding(time_steps).to(self.device)
-            query = self.fixed_time_embedding(self.query.unsqueeze(0)).to(self.device) 
+            key = self.fixed_time_embedding(time_steps)
+            query = self.fixed_time_embedding(self.query.unsqueeze(0)) 
         out, _ = self.attention(query, key, x, mask)
         out = self.cross(out)
         if not self.use_classif:
@@ -467,7 +453,7 @@ class enc_rnn3(nn.Module):
 class dec_rnn3(nn.Module):
  
     def __init__(self, input_dim, query, latent_dim=2, nhidden=16, 
-                 embed_time=16,learn_emb=False, device='cuda'):
+                 embed_time=16,learn_emb=False, device='cpu'):
         super(dec_rnn3, self).__init__()
         self.embed_time = embed_time
         self.dim = input_dim
@@ -489,7 +475,6 @@ class dec_rnn3(nn.Module):
             nn.Linear(50, input_dim))
         
     def learn_time_embedding(self, tt):
-        tt = tt.to(self.device)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -519,18 +504,16 @@ class dec_rnn3(nn.Module):
         p_attn = F.softmax(scores, dim = -2)
         if dropout is not None:
             p_attn = dropout(p_attn)
-        #return torch.sum(p_attn*value, -2), p_attn
         return torch.sum(p_attn*value.unsqueeze(1), -2), p_attn
        
     def forward(self, z, time_steps):
         out, _ = self.gru_rnn(z)
-        time_steps = time_steps.cpu()
         if self.learn_emb:
-            query = self.learn_time_embedding(time_steps).to(self.device)
-            key = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            query = self.learn_time_embedding(time_steps)
+            key = self.learn_time_embedding(self.query.unsqueeze(0))
         else:
-            query = self.fixed_time_embedding(time_steps).to(self.device)
-            key = self.fixed_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            query = self.fixed_time_embedding(time_steps)
+            key = self.fixed_time_embedding(self.query.unsqueeze(0))
         out, _ = self.attention(query, key, out)
         out = self.z0_to_obs(out)
         return out        

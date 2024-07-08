@@ -54,7 +54,7 @@ def normalize_masked_data(data, mask, att_min, att_max):
     return data_norm, att_min, att_max
 
 
-def evaluate(dim, rec, dec, test_loader, args, num_sample=10, device="cuda"):
+def evaluate(dim, rec, dec, test_loader, args, num_sample=10, device="cpu"):
     mse, test_n = 0.0, 0.0
     with torch.no_grad():
         for test_batch in test_loader:

@@ -1,4 +1,3 @@
-# pylint: disable=E1101, E0401, E1102, W0621, W0221
 import argparse
 import numpy as np
 import torch
@@ -50,10 +49,12 @@ if __name__ == '__main__':
     seed = args.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
-    torch.cuda.manual_seed(seed)
+    
+    # Remove this line as it is specific to GPU
+    # torch.cuda.manual_seed(seed)
 
-    device = torch.device(
-        'cuda' if torch.cuda.is_available() else 'cpu')
+    # Ensure the device is set to CPU
+    device = torch.device('cpu')
 
     if args.dataset == 'toy':
         data_obj = utils.kernel_smoother_data_gen(args, alpha=100., seed=0)
@@ -129,7 +130,6 @@ if __name__ == '__main__':
             out = rec(torch.cat((subsampled_data, subsampled_mask), 2), subsampled_tp)
             qz0_mean = out[:, :, :args.latent_dim]
             qz0_logvar = out[:, :, args.latent_dim:]
-            # epsilon = torch.randn(qz0_mean.size()).to(device)
             epsilon = torch.randn(
                 args.k_iwae, qz0_mean.shape[0], qz0_mean.shape[1], qz0_mean.shape[2]
             ).to(device)
@@ -139,9 +139,7 @@ if __name__ == '__main__':
                 z0,
                 observed_tp[None, :, :].repeat(args.k_iwae, 1, 1).view(-1, observed_tp.shape[1])
             )
-            # nsample, batch, seqlen, dim
             pred_x = pred_x.view(args.k_iwae, batch_len, pred_x.shape[1], pred_x.shape[2])
-            # compute loss
             logpx, analytic_kl = utils.compute_losses(
                 dim, train_batch, qz0_mean, qz0_logvar, pred_x, args, device)
             loss = -(torch.logsumexp(logpx - kl_coef * analytic_kl, dim=0).mean(0) - np.log(args.k_iwae))
