@@ -1,11 +1,51 @@
 import argparse
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.optim as optim
+import time
 
 from random import SystemRandom
 import models
 import utils
+import pickle
+from custom_dataset import CustomDataset
+
+# Function to extract data from DataLoader
+def extract_data_from_dataloader(dataloader, dim):
+    all_t = []
+    all_x = []
+    all_m = []
+    
+    for batch in dataloader:
+        print(f"Batch shape: {batch[0].shape}")  # Debugging line to print the shape of the batch
+        
+        # If the batch is a tuple or list, the first element is usually the data
+        if isinstance(batch, (tuple, list)):
+            data = batch[0]
+        else:
+            data = batch
+        
+        if data.dim() == 3:
+            observed_data = data[:, :, :dim]  # X values
+            observed_mask = data[:, :, dim:2*dim]  # Mask
+            observed_tp = data[:, :, -1]  # Time
+        elif data.dim() == 2:
+            observed_data = data[:, :dim]  # X values
+            observed_mask = data[:, dim:2*dim]  # Mask
+            observed_tp = data[:, -1]  # Time
+        else:
+            raise ValueError(f"Unexpected data dimensions: {data.dim()}")
+
+        all_x.append(observed_data.numpy())
+        all_m.append(observed_mask.numpy())
+        all_t.append(observed_tp.numpy())
+        
+    all_t = np.concatenate(all_t, axis=0)
+    all_x = np.concatenate(all_x, axis=0)
+    all_m = np.concatenate(all_m, axis=0)
+    
+    return all_t, all_x, all_m
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--niters', type=int, default=2000)
@@ -56,16 +96,23 @@ if __name__ == '__main__':
     # Ensure the device is set to CPU
     device = torch.device('cpu')
 
+    print("Loading dataset...")
     if args.dataset == 'toy':
         data_obj = utils.kernel_smoother_data_gen(args, alpha=100., seed=0)
     elif args.dataset == 'physionet':
         data_obj = utils.get_physionet_data(args, 'cpu', args.quantization)
+    elif args.dataset == 'custom':
+        with open('custom_dataset.pkl', 'rb') as f:
+            data_obj = pickle.load(f)
+    print("Dataset loaded.")
 
     train_loader = data_obj["train_dataloader"]
     test_loader = data_obj["test_dataloader"]
+    val_loader = data_obj.get("val_dataloader", None)
     dim = data_obj["input_dim"]
 
     # model
+    print("Initializing models...")
     if args.enc == 'enc_rnn3':
         rec = models.enc_rnn3(
             dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, 
@@ -84,12 +131,13 @@ if __name__ == '__main__':
         dec = models.dec_mtan_rnn(
             dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, args.gen_hidden, 
             embed_time=128, learn_emb=args.learn_emb, num_heads=args.dec_num_heads).to(device)
-
+    print("Models initialized.")
 
     params = (list(dec.parameters()) + list(rec.parameters()))
     optimizer = optim.Adam(params, lr=args.lr)
     print('parameters:', utils.count_parameters(rec), utils.count_parameters(dec))
     if args.fname is not None:
+        print("Loading saved model weights...")
         checkpoint = torch.load(args.fname)
         rec.load_state_dict(checkpoint['rec_state_dict'])
         dec.load_state_dict(checkpoint['dec_state_dict'])
@@ -102,6 +150,7 @@ if __name__ == '__main__':
         print('Test MSE', utils.evaluate(dim, rec, dec, test_loader, args, 30))
         print('Test MSE', utils.evaluate(dim, rec, dec, test_loader, args, 50))
 
+    print("Starting training loop...")
     for itr in range(1, args.niters + 1):
         train_loss = 0
         train_n = 0
@@ -116,6 +165,7 @@ if __name__ == '__main__':
             kl_coef = 1
 
         for train_batch in train_loader:
+            print("Processing batch...")
             train_batch = train_batch.to(device)
             batch_len = train_batch.shape[0]
             observed_data = train_batch[:, :, :dim]
@@ -167,3 +217,67 @@ if __name__ == '__main__':
                 'loss': -loss,
             }, args.dataset + '_' + args.enc + '_' + args.dec + '_' +
                 str(experiment_id) + '.h5')
+    print("Training complete.")
+
+    # Now run the data through the trained model and capture the processed outputs
+    def process_data_through_model(dataloader, model, decoder, dim):
+        model.eval()
+        all_t = []
+        all_x = []
+        all_m = []
+
+        with torch.no_grad():
+            for batch in dataloader:
+                batch = batch.to(device)
+                observed_data = batch[:, :, :dim]
+                observed_mask = batch[:, :, dim:2 * dim]
+                observed_tp = batch[:, :, -1]
+                
+                out = model(torch.cat((observed_data, observed_mask), 2), observed_tp)
+                qz0_mean = out[:, :, :args.latent_dim]
+                qz0_logvar = out[:, :, args.latent_dim:]
+                epsilon = torch.randn(
+                    1, qz0_mean.shape[0], qz0_mean.shape[1], qz0_mean.shape[2]
+                ).to(device)
+                z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
+                z0 = z0.view(-1, qz0_mean.shape[1], qz0_mean.shape[2])
+                pred_x = decoder(
+                    z0,
+                    observed_tp[None, :, :].repeat(1, 1, 1).view(-1, observed_tp.shape[1])
+                )
+                pred_x = pred_x.view(1, observed_data.shape[0], observed_data.shape[1], observed_data.shape[2]).mean(0)
+                
+                all_x.append(pred_x.cpu().numpy())
+                all_t.append(observed_tp.cpu().numpy())
+                all_m.append(observed_mask.cpu().numpy())
+        
+        all_t = np.concatenate(all_t, axis=0)
+        all_x = np.concatenate(all_x, axis=0)
+        all_m = np.concatenate(all_m, axis=0)
+        
+        return all_t, all_x, all_m
+
+    T_train, X_train, M_train = process_data_through_model(train_loader, rec, dec, dim)
+    T_test, X_test, M_test = process_data_through_model(test_loader, rec, dec, dim)
+    if val_loader is not None:
+        T_val, X_val, M_val = process_data_through_model(val_loader, dim)
+        np.save('T_val.npy', T_val)
+        np.save('X_val.npy', X_val)
+        np.save('M_val.npy', M_val)
+        print("T_val shape:", T_val.shape)
+        print("X_val shape:", X_val.shape)
+        print("M_val shape:", M_val.shape)
+
+    np.save('T_train.npy', T_train)
+    np.save('X_train.npy', X_train)
+    np.save('M_train.npy', M_train)
+    np.save('T_test.npy', T_test)
+    np.save('X_test.npy', X_test)
+    np.save('M_test.npy', M_test)
+
+    print("T_train shape:", T_train.shape)
+    print("X_train shape:", X_train.shape)
+    print("M_train shape:", M_train.shape)
+    print("T_test shape:", T_test.shape)
+    print("X_test shape:", X_test.shape)
+    print("M_test shape:", M_test.shape)

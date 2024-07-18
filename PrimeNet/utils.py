@@ -284,7 +284,18 @@ def generate_batches(X_train, X_val, args):
 
     train_cl_collator = CLDataCollator(max_len = max_len, args=args)
 
+
+    # Debugging: Check dataset lengths and batch sizes
+    print(f"Length of pretrain_data: {len(pretrain_data)}")
+    print(f"Length of val_data: {len(val_data)}")
+    print(f"Initial Batch size: {args.batch_size}")
+    #End
     batch_size = min(min(len(val_data), args.batch_size), args.n)
+    # Debugging
+    print(f"Final Batch size: {batch_size}")
+    if len(pretrain_data) == 0 or len(val_data) == 0:
+        raise ValueError("Dataset is empty, cannot proceed with batching.")
+    #End
     train_dataloader = DataLoader(pretrain_data, batch_size = batch_size, shuffle = True, collate_fn = train_cl_collator, num_workers=8)
     val_dataloader = DataLoader(val_data, batch_size = batch_size, shuffle = False, collate_fn = train_cl_collator, num_workers=8)
 

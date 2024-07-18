@@ -3,60 +3,60 @@ import numpy as np
 import os
 import argparse
 
-def load_mtan_output(file_path):
-    checkpoint = torch.load(file_path)
-    rec_state_dict = checkpoint['rec_state_dict']
-    dec_state_dict = checkpoint['dec_state_dict']
-    
-    return rec_state_dict, dec_state_dict
-
 def prepare_data_for_primenet(T, X, M):
-    # Ensure T, X, and M have the correct shapes
-    T_expanded = T.unsqueeze(-1).expand_as(X)
+    # Ensure T_expanded has the same shape as X and M
+    T_expanded = np.expand_dims(T, axis=2)
+    print(T_expanded.shape)
+    print(X.shape)
+    print(M.shape)
+    assert T_expanded.shape == X.shape == M.shape, f"Shapes do not match: T_expanded: {T_expanded.shape}, X: {X.shape}, M: {M.shape}"
+    
+    combined_data = np.concatenate((T_expanded, X, M), axis=2)
+    
+    num_samples = combined_data.shape[0]
+    train_size = int(0.75 * num_samples)
+    val_size = (num_samples - train_size) // 2  # Ensure we have a test set
 
-    # Combine T, X, M into a single tensor
-    combined_data = torch.stack((T_expanded, X, M), dim=2)
+    train_data = combined_data[:train_size]
+    val_data = combined_data[train_size:train_size + val_size]
+    test_data = combined_data[train_size + val_size:]
 
-    # Split data into train, validation, and test sets
-    train_data = combined_data[:60]
-    val_data = combined_data[60:80]
-    test_data = combined_data[80:]
+    labels = np.random.randint(0, 2, size=(num_samples,))
+    labels_train, labels_val, labels_test = labels[:train_size], labels[train_size:train_size + val_size], labels[train_size + val_size:]
 
-    # Generate random labels for fine-tuning (assuming binary classification)
-    labels = np.random.randint(0, 2, size=(combined_data.shape[0],))  # Binary labels for classification, example
-    labels_train, labels_val, labels_test = labels[:60], labels[60:80], labels[80:]
-
-    # Create directories if they don't exist
     os.makedirs('PrimeNet/data/pretrain', exist_ok=True)
     os.makedirs('PrimeNet/data/finetune', exist_ok=True)
 
-    # Save the data in the required format for pre-training
-    torch.save(train_data, 'PrimeNet/data/pretrain/X_train.pt')
-    torch.save(val_data, 'PrimeNet/data/pretrain/X_val.pt')
+    torch.save(torch.tensor(train_data, dtype=torch.float32), 'PrimeNet/data/pretrain/X_train.pt')
+    torch.save(torch.tensor(val_data, dtype=torch.float32), 'PrimeNet/data/pretrain/X_val.pt')
 
-    # Save the fine-tuning data
-    torch.save(train_data, 'PrimeNet/data/finetune/X_train.pt')
-    torch.save(val_data, 'PrimeNet/data/finetune/X_val.pt')
-    torch.save(test_data, 'PrimeNet/data/finetune/X_test.pt')
+    torch.save(torch.tensor(train_data, dtype=torch.float32), 'PrimeNet/data/finetune/X_train.pt')
+    torch.save(torch.tensor(val_data, dtype=torch.float32), 'PrimeNet/data/finetune/X_val.pt')
+    torch.save(torch.tensor(test_data, dtype=torch.float32), 'PrimeNet/data/finetune/X_test.pt')
 
     torch.save(torch.tensor(labels_train, dtype=torch.long), 'PrimeNet/data/finetune/y_train.pt')
     torch.save(torch.tensor(labels_val, dtype=torch.long), 'PrimeNet/data/finetune/y_val.pt')
     torch.save(torch.tensor(labels_test, dtype=torch.long), 'PrimeNet/data/finetune/y_test.pt')
 
-    print("Data generation and saving completed.")
+    print(f"Data generation and saving completed.")
+    print(f"X_train: {train_data.shape}")
+    print(f"X_val: {val_data.shape}")
+    print(f"X_test: {test_data.shape}")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input_file', type=str, required=True, help='Path to the input .h5 file')
-    args = parser.parse_args()
+    T_train = np.load("mTAN/src/T_train.npy")
+    X_train = np.load("mTAN/src/X_train.npy")
+    M_train = np.load("mTAN/src/M_train.npy")
+    T_test = np.load("mTAN/src/T_test.npy")
+    X_test = np.load("mTAN/src/X_test.npy")
+    M_test = np.load("mTAN/src/M_test.npy")
 
-    file_path = args.input_file
-    rec_state_dict, dec_state_dict = load_mtan_output(file_path)
+    T = np.concatenate((T_train, T_test), axis=0)
+    X = np.concatenate((X_train, X_test), axis=0)
+    M = np.concatenate((M_train, M_test), axis=0)
 
-    # Example tensors (replace these with actual data extracted from the state dicts or another source)
-    # Assuming T, X, M are part of the state dict or derived from the checkpoint
-    T = torch.linspace(0, 1, 100)  # Replace with actual time points
-    X = torch.randn(100, 5)  # Replace with actual data
-    M = torch.randint(0, 2, (100, 5))  # Replace with actual mask
+    print(f"Shapes - T: {T.shape}, X: {X.shape}, M: {M.shape}")
+    assert T.shape[0] == X.shape[0] == M.shape[0], "Number of samples in T, X, and M do not match."
+    assert X.shape[1] == M.shape[1], "Number of features in X and M do not match."
 
     prepare_data_for_primenet(T, X, M)

@@ -38,6 +38,10 @@ T_expanded = np.tile(T, (X.shape[1], 1)).T
 combined_data = np.stack((T_expanded, X, M), axis=2)
 
 # Create directories if they don't exist
+
+print(T_expanded.shape)
+print(X.shape)
+print(M.shape)
 os.makedirs('data/pretrain', exist_ok=True)
 os.makedirs('data/finetune', exist_ok=True)
 
